@@ -1,0 +1,15 @@
+name: price-comparison
+version: '3'
+
+services:
+  price-compare:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ./input:/app/input
+      - ./result:/app/result
+    environment:
+      - PYTHONUNBUFFERED=1
+    tty: true
+    command: python compare_prices.py 
