@@ -3,13 +3,8 @@ version: '3'
 
 services:
   price-compare:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    build: .
     volumes:
       - ./input:/app/input
       - ./result:/app/result
-    environment:
-      - PYTHONUNBUFFERED=1
-    tty: true
-    command: python compare_prices.py 
+    tty: true 

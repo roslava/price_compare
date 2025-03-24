@@ -3,71 +3,105 @@ import numpy as np
 from openpyxl import load_workbook
 from openpyxl.styles import PatternFill, Alignment, Font, Border, Side
 import os
+import glob
 
 # Создаем директории, если они не существуют
-os.makedirs('input', exist_ok=True)
+os.makedirs('input/old', exist_ok=True)
+os.makedirs('input/new', exist_ok=True)
 os.makedirs('result', exist_ok=True)
 
-# Пути к файлам
-input_file_2024 = os.path.join('input', 'Прайс 2024 для страховых.xls')
-input_file_2025 = os.path.join('input', 'Прайс 2025 для СТРАХОВЫХ.xls')
-output_file = os.path.join('result', 'Прайс 2025 для СТРАХОВЫХ (с изменениями).xlsx')
+# Находим первый файл в директории old и new
+input_files_old = glob.glob('input/old/*.*')
+input_files_new = glob.glob('input/new/*.*')
 
 # Проверяем наличие входных файлов
-if not os.path.exists(input_file_2024) or not os.path.exists(input_file_2025):
-    print("Ошибка: Поместите файлы прайс-листов в папку 'input':")
-    print(f"- {os.path.basename(input_file_2024)}")
-    print(f"- {os.path.basename(input_file_2025)}")
+if not input_files_old:
+    print("Ошибка: В папке 'input/old' отсутствуют файлы прайс-листа предыдущего года")
     exit(1)
+
+if not input_files_new:
+    print("Ошибка: В папке 'input/new' отсутствуют файлы прайс-листа следующего года")
+    exit(1)
+
+# Выбираем первый файл в каждой директории
+input_file_old = input_files_old[0]
+input_file_new = input_files_new[0]
+
+# Определяем годы для имен колонок из имен файлов
+old_year = "предыдущий год"
+new_year = "следующий год"
+
+# Формируем название выходного файла
+output_file = os.path.join('result', f'Сравнение прайсов ({os.path.basename(input_file_new)}).xlsx')
+
+# Выводим информацию о файлах
+print(f"Используем файлы:")
+print(f"Прайс предыдущего года: {input_file_old}")
+print(f"Прайс следующего года: {input_file_new}")
+print(f"Результат будет сохранен в: {output_file}")
 
 # Загрузка файлов
 try:
-    # Читаем Excel файлы с помощью xlrd для старых .xls файлов
-    df_2024 = pd.read_excel(
-        input_file_2024,
-        engine='xlrd',  # Используем xlrd для .xls файлов
-        dtype={3: str},  # Читаем колонку с ценами как текст
-        na_values=['', ' '],  # Считаем пустые строки и пробелы как NaN
+    # Читаем Excel файлы
+    engine = 'xlrd' if input_file_old.endswith('.xls') else 'openpyxl'
+    df_old = pd.read_excel(
+        input_file_old,
+        engine=engine,  # Выбираем движок в зависимости от расширения
+        na_values=['', ' ', None],  # Считаем пустые строки и пробелы как NaN
         keep_default_na=True
     )
-    df_2025 = pd.read_excel(
-        input_file_2025,
-        engine='xlrd',  # Используем xlrd для .xls файлов
-        dtype={3: str},  # Читаем колонку с ценами как текст
-        na_values=['', ' '],  # Считаем пустые строки и пробелы как NaN
+    
+    engine = 'xlrd' if input_file_new.endswith('.xls') else 'openpyxl'
+    df_new = pd.read_excel(
+        input_file_new,
+        engine=engine,  # Выбираем движок в зависимости от расширения
+        na_values=['', ' ', None],  # Считаем пустые строки и пробелы как NaN
         keep_default_na=True
     )
+    
+    # Выводим информацию о столбцах для отладки
+    print("\nСтолбцы в старом прайсе:")
+    for col in df_old.columns:
+        print(f"- {col}")
+
+    print("\nСтолбцы в новом прайсе:")
+    for col in df_new.columns:
+        print(f"- {col}")
     
     # Переименовываем колонки в обоих DataFrame
     column_names = {
-        df_2024.columns[0]: '№ услуги',
-        df_2024.columns[1]: 'Артикул',
-        df_2024.columns[2]: 'Наименование услуги',
-        df_2024.columns[-1]: 'Стоимость услуг 2024'
+        df_old.columns[0]: '№ услуги',
+        df_old.columns[1]: 'Артикул',
+        df_old.columns[2]: 'Наименование услуги',
+        df_old.columns[-1]: f'Стоимость услуг {old_year}'
     }
-    df_2024 = df_2024.rename(columns=column_names)
+    df_old = df_old.rename(columns=column_names)
     
     column_names = {
-        df_2025.columns[0]: '№ услуги',
-        df_2025.columns[1]: 'Артикул',
-        df_2025.columns[2]: 'Наименование услуги',
-        df_2025.columns[-1]: 'Стоимость услуг 2025'
+        df_new.columns[0]: '№ услуги',
+        df_new.columns[1]: 'Артикул',
+        df_new.columns[2]: 'Наименование услуги',
+        df_new.columns[-1]: f'Стоимость услуг {new_year}'
     }
-    df_2025 = df_2025.rename(columns=column_names)
+    df_new = df_new.rename(columns=column_names)
     
     # Обновляем имена колонок с ценами
-    price_column_2024 = 'Стоимость услуг 2024'
-    price_column_2025 = 'Стоимость услуг 2025'
+    price_column_old = f'Стоимость услуг {old_year}'
+    price_column_new = f'Стоимость услуг {new_year}'
     
     print(f"\nИспользуем колонки:")
-    print(f"2024: {price_column_2024}")
-    print(f"2025: {price_column_2025}")
+    print(f"Предыдущий год: {price_column_old}")
+    print(f"Следующий год: {price_column_new}")
     
     # Преобразуем значения цен в числовой формат
     def clean_price(value):
         if pd.isna(value):
             return value
         try:
+            # Если значение уже числовое, просто округляем и возвращаем
+            if isinstance(value, (int, float)):
+                return round(float(value), 2)
+            
             # Преобразуем в строку и очищаем
             value_str = str(value)
             # Проверяем, является ли значение числом в научной нотации
@@ -91,77 +125,96 @@ try:
             return None
 
     # Применяем очистку к колонкам с ценами и выводим уникальные значения для отладки
-    print("\nУникальные значения в колонке цен 2024:")
-    print(df_2024[price_column_2024].unique())
+    print("\nУникальные значения в колонке цен предыдущего года:")
+    print(df_old[price_column_old].unique())
     
-    print("\nУникальные значения в колонке цен 2025:")
-    print(df_2025[price_column_2025].unique())
+    print("\nУникальные значения в колонке цен следующего года:")
+    print(df_new[price_column_new].unique())
     
     # Применяем очистку к колонкам с ценами
-    df_2024[price_column_2024] = df_2024[price_column_2024].apply(clean_price)
-    df_2025[price_column_2025] = df_2025[price_column_2025].apply(clean_price)
+    df_old[price_column_old] = df_old[price_column_old].apply(clean_price)
+    df_new[price_column_new] = df_new[price_column_new].apply(clean_price)
+    
+    # Проверяем наличие цен в новом прайсе
+    print("\nПроверка цен в новом прайсе (после очистки):")
+    for index, row in df_new.iterrows():
+        article = str(row['Артикул']) if pd.notna(row['Артикул']) else ""
+        if article.strip() and pd.isna(row[price_column_new]):
+            name = row['Наименование услуги'] if pd.notna(row['Наименование услуги']) else "Нет названия"
+            print(f"ВНИМАНИЕ: Отсутствует цена для артикула {article} ({name})")
     
     # Выводим результаты преобразования для проверки
     print("\nПосле преобразования:")
-    print("Уникальные значения в колонке цен 2024:")
-    print(df_2024[price_column_2024].unique())
+    print("Уникальные значения в колонке цен предыдущего года:")
+    print(df_old[price_column_old].unique())
     
-    print("\nУникальные значения в колонке цен 2025:")
-    print(df_2025[price_column_2025].unique())
+    print("\nУникальные значения в колонке цен следующего года:")
+    print(df_new[price_column_new].unique())
     
     # Удаляем пустые строки
     # Строка считается пустой, если все значения в ней NaN или пустые строки
-    df_2024 = df_2024.dropna(how='all').reset_index(drop=True)
-    df_2025 = df_2025.dropna(how='all').reset_index(drop=True)
+    df_old = df_old.dropna(how='all').reset_index(drop=True)
+    df_new = df_new.dropna(how='all').reset_index(drop=True)
     
     # Удаляем строки, где все значения - пустые строки
-    df_2024 = df_2024[~(df_2024.astype(str) == '').all(axis=1)].reset_index(drop=True)
-    df_2025 = df_2025[~(df_2025.astype(str) == '').all(axis=1)].reset_index(drop=True)
+    df_old = df_old[~(df_old.astype(str) == '').all(axis=1)].reset_index(drop=True)
+    df_new = df_new[~(df_new.astype(str) == '').all(axis=1)].reset_index(drop=True)
+    
+    # НЕ фильтруем строки без артикулов, чтобы сохранить заголовки разделов
+    # Заголовки разделов могут не иметь артикулов, но быть нужными для структуры прайса
     
     # Выводим статистику по количеству позиций
     print("\nСтатистика по количеству позиций:")
-    print(f"Количество позиций в прайсе 2024: {len(df_2024)}")
-    print(f"Количество позиций в прайсе 2025: {len(df_2025)}")
+    print(f"Количество позиций в прайсе предыдущего года: {len(df_old)}")
+    print(f"Количество позиций в прайсе следующего года: {len(df_new)}")
     
     # Подсчитываем уникальные артикулы (конвертируем в строки для корректного сравнения)
-    articles_2024 = set(df_2024['Артикул'].astype(str).dropna())
-    articles_2025 = set(df_2025['Артикул'].astype(str).dropna())
+    # Исключаем заголовки разделов из сравнения артикулов
+    articles_old = set(df_old[df_old['Артикул'].notna() & (df_old['Артикул'].astype(str) != '')]['Артикул'].astype(str).dropna())
+    articles_new = set(df_new[df_new['Артикул'].notna() & (df_new['Артикул'].astype(str) != '')]['Артикул'].astype(str).dropna())
     
     print(f"\nКоличество уникальных артикулов:")
-    print(f"Прайс 2024: {len(articles_2024)}")
-    print(f"Прайс 2025: {len(articles_2025)}")
+    print(f"Прайс предыдущего года: {len(articles_old)}")
+    print(f"Прайс следующего года: {len(articles_new)}")
     
     # Анализируем разницу по артикулам
-    missing_in_2025 = articles_2024 - articles_2025
-    new_in_2025 = articles_2025 - articles_2024
+    missing_in_new = articles_old - articles_new
+    new_in_new = articles_new - articles_old
     
     print(f"\nАнализ изменений по артикулам:")
-    print(f"Услуг, отсутствующих в прайсе 2025: {len(missing_in_2025)}")
-    if len(missing_in_2025) > 0:
-        print("\nСписок артикулов, отсутствующих в прайсе 2025:")
-        for article in sorted(missing_in_2025):
+    print(f"Услуг, отсутствующих в новом прайсе: {len(missing_in_new)}")
+    if len(missing_in_new) > 0:
+        print("\nСписок артикулов, отсутствующих в новом прайсе:")
+        for article in sorted(missing_in_new):
             # Конвертируем артикул в строку для поиска
-            service = df_2024[df_2024['Артикул'].astype(str) == article]['Наименование услуги'].iloc[0]
-            price = df_2024[df_2024['Артикул'].astype(str) == article][price_column_2024].iloc[0]
-            print(f"Артикул: {article}, Цена 2024: {price} руб., Услуга: {service}")
+            service = df_old[df_old['Артикул'].astype(str) == article]['Наименование услуги'].iloc[0]
+            price = df_old[df_old['Артикул'].astype(str) == article][price_column_old].iloc[0]
+            print(f"Артикул: {article}, Цена предыдущего года: {price} руб., Услуга: {service}")
     
-    print(f"\nНовых услуг в прайсе 2025: {len(new_in_2025)}")
-    if len(new_in_2025) > 0:
-        print("\nСписок новых артикулов в прайсе 2025:")
-        for article in sorted(new_in_2025):
+    print(f"\nНовых услуг в новом прайсе: {len(new_in_new)}")
+    if len(new_in_new) > 0:
+        print("\nСписок новых артикулов в новом прайсе:")
+        for article in sorted(new_in_new):
             # Конвертируем артикул в строку для поиска
-            service = df_2025[df_2025['Артикул'].astype(str) == article]['Наименование услуги'].iloc[0]
-            price = df_2025[df_2025['Артикул'].astype(str) == article][price_column_2025].iloc[0]
-            print(f"Артикул: {article}, Цена 2025: {price} руб., Услуга: {service}")
+            service = df_new[df_new['Артикул'].astype(str) == article]['Наименование услуги'].iloc[0]
+            price = df_new[df_new['Артикул'].astype(str) == article][price_column_new].iloc[0]
+            print(f"Артикул: {article}, Цена нового прайса: {price} руб., Услуга: {service}")
     
     # Сохраняем список удаленных позиций для добавления в конец документа
     removed_services = []
-    if len(missing_in_2025) > 0:
-        for article in sorted(missing_in_2025):
-            service_num = df_2024[df_2024['Артикул'].astype(str) == article]['№ услуги'].iloc[0]
-            service = df_2024[df_2024['Артикул'].astype(str) == article]['Наименование услуги'].iloc[0]
-            price = df_2024[df_2024['Артикул'].astype(str) == article][price_column_2024].iloc[0]
-            removed_services.append((service_num, article, price, service))
+    if len(missing_in_new) > 0:
+        for article in sorted(missing_in_new):
+            # Проверяем, что артикул не пустой и существует в старом прайсе
+            if article and article.strip() and (df_old['Артикул'].astype(str) == article).any():
+                try:
+                    service_num = df_old[df_old['Артикул'].astype(str) == article]['№ услуги'].iloc[0]
+                    service = df_old[df_old['Артикул'].astype(str) == article]['Наименование услуги'].iloc[0]
+                    price = df_old[df_old['Артикул'].astype(str) == article][price_column_old].iloc[0]
+                    # Добавляем только если имеем все данные
+                    if pd.notna(service_num) and pd.notna(service) and pd.notna(price):
+                        removed_services.append((service_num, article, price, service))
+                except (IndexError, KeyError) as e:
+                    print(f"Ошибка при обработке артикула {article}: {e}")
         
         # Сортируем список по номеру услуги
         # Преобразуем номер услуги в число для корректной сортировки
@@ -171,40 +224,70 @@ except Exception as e:
     print(f"Ошибка при загрузке файлов: {e}")
     exit(1)
 
-# Создаем словарь цен 2024 года для быстрого поиска по артикулу (конвертируем в строки)
-prices_2024 = dict(zip(df_2024['Артикул'].astype(str), df_2024[price_column_2024]))
+# Создаем словарь цен предыдущего года для быстрого поиска по артикулу (конвертируем в строки)
+# Отфильтровываем записи без артикулов и пустые артикулы
+valid_old_records = df_old[df_old['Артикул'].notna() & (df_old['Артикул'].astype(str).str.strip() != '')]
+prices_old = dict(zip(valid_old_records['Артикул'].astype(str), valid_old_records[price_column_old]))
 
-# Добавляем колонку с ценами 2024 года, используя артикул для сопоставления
-df_2025['Стоимость услуг 2024'] = df_2025['Артикул'].astype(str).map(prices_2024)
+# Добавляем колонку с ценами предыдущего года, используя артикул для сопоставления
+df_new['Стоимость услуг предыдущий год'] = df_new['Артикул'].astype(str).map(prices_old)
 
 # Вычисляем процентное изменение
 def calculate_price_change(row):
     article = row['Артикул']
-    price_2025 = row[price_column_2025]
-    price_2024 = prices_2024.get(article, None)
+    price_new = row[price_column_new]
+    price_old = prices_old.get(str(article), None)
     
-    if price_2024 is not None and price_2024 != 0 and pd.notnull(price_2024) and pd.notnull(price_2025):
-        change = ((price_2025 - price_2024) / price_2024) * 100
+    if price_old is not None and price_old != 0 and pd.notnull(price_old) and pd.notnull(price_new):
+        change = ((price_new - price_old) / price_old) * 100
         return round(change, 1)
     return None
 
 # Добавляем новую колонку с процентным изменением
-df_2025['Изменение цены %'] = df_2025.apply(calculate_price_change, axis=1)
+df_new['Изменение цены %'] = df_new.apply(calculate_price_change, axis=1)
 
 # Форматируем процентное изменение для отображения
-df_2025['Изменение цены % (текст)'] = df_2025['Изменение цены %'].apply(
+df_new['Изменение цены % (текст)'] = df_new['Изменение цены %'].apply(
     lambda x: f"+{x:.1f}%" if pd.notnull(x) and x > 0 else (f"{x:.1f}%" if pd.notnull(x) else "")
 )
 
 # Переупорядочиваем колонки
-columns = list(df_2025.columns)
-price_2025_index = columns.index(price_column_2025)
-columns.remove('Стоимость услуг 2024')
-columns.insert(price_2025_index, 'Стоимость услуг 2024')
-df_2025 = df_2025[columns]
+columns = list(df_new.columns)
+price_new_index = columns.index(price_column_new)
+columns.remove('Стоимость услуг предыдущий год')
+columns.insert(price_new_index, 'Стоимость услуг предыдущий год')
+df_new = df_new[columns]
+
+# ВАЖНОЕ ИСПРАВЛЕНИЕ: Копируем DataFrame вместо создания нового
+df_result = df_new.copy(deep=True)
+
+# Проверяем, что цены скопировались корректно
+print("\nПроверка цен в результирующем DataFrame перед сохранением:")
+for index, row in df_result.iterrows():
+    article = str(row['Артикул']) if pd.notna(row['Артикул']) else ""
+    if article.strip():
+        # Проверяем, есть ли цена
+        if pd.isna(row[price_column_new]):
+            name = row['Наименование услуги'] if pd.notna(row['Наименование услуги']) else "Нет названия"
+            print(f"ВНИМАНИЕ: Отсутствует цена для артикула {article} ({name})")
+            
+            # Попытка восстановить цену из исходного DataFrame
+            orig_row = df_new[df_new['Артикул'].astype(str) == article]
+            if not orig_row.empty and pd.notna(orig_row[price_column_new].iloc[0]):
+                corrected_price = orig_row[price_column_new].iloc[0]
+                print(f"  Восстанавливаем цену: {corrected_price}")
+                df_result.at[index, price_column_new] = corrected_price
+
+# Фильтруем результат, оставляя только:
+# 1. Строки без артикулов (заголовки)
+# 2. Строки с артикулами, которые есть в новом прайсе
+df_result = df_result[
+    (~df_result['Артикул'].notna()) |  # Строки без артикулов
+    (df_result['Артикул'].notna() & df_result['Артикул'].astype(str).isin(articles_new))  # Строки с артикулами из нового прайса
+]
 
 # Сохраняем результат в новый файл Excel
-df_2025.to_excel(output_file, index=False)
+df_result.to_excel(output_file, index=False)
 
 # Добавляем цветовое форматирование
 wb = load_workbook(output_file)
@@ -235,17 +318,17 @@ white_border = Border(
 )
 
 # Находим индексы нужных колонок
-price_col_2025 = None
-price_col_2024 = None
+price_col_new = None
+price_col_old = None
 percent_col = None
 percent_text_col = None
 service_name_col = None  # Добавляем поиск колонки с наименованием услуги
 
 for idx, cell in enumerate(ws[1], 1):
-    if cell.value == price_column_2025:
-        price_col_2025 = idx
-    elif cell.value == 'Стоимость услуг 2024':
-        price_col_2024 = idx
+    if cell.value == price_column_new:
+        price_col_new = idx
+    elif cell.value == 'Стоимость услуг предыдущий год':
+        price_col_old = idx
     elif cell.value == 'Изменение цены %':
         percent_col = idx
     elif cell.value == 'Изменение цены % (текст)':
@@ -254,7 +337,7 @@ for idx, cell in enumerate(ws[1], 1):
         service_name_col = idx
 
 # Применяем форматирование
-if price_col_2025 and percent_col:
+if price_col_new and percent_col:
     # Получаем размеры таблицы
     max_row = ws.max_row
     max_col = ws.max_column
@@ -308,7 +391,7 @@ if price_col_2025 and percent_col:
                     indent=0
                 )
                 # Форматируем ячейки с ценами
-                if col in [price_col_2024, price_col_2025]:
+                if col in [price_col_old, price_col_new]:
                     cell.number_format = '0.00'
                 # Добавляем пробелы в начало и конец текста для создания отступов (кроме цен)
                 elif cell.value and isinstance(cell.value, (str, int, float)):
@@ -334,7 +417,7 @@ if price_col_2025 and percent_col:
                     pass  # Пропускаем ячейки с некорректными значениями
         
         # Проверяем цену
-        price_cell = ws.cell(row=row, column=price_col_2025)
+        price_cell = ws.cell(row=row, column=price_col_new)
         
         # Если цена отсутствует
         if price_cell.value is None or price_cell.value == '':
@@ -425,28 +508,28 @@ for fill, description in legend_items:
 ws.column_dimensions['A'].width = 15
 ws.column_dimensions['B'].width = 40
 
-# После легенды добавляем список удаленных позиций
+# Добавляем список удаленных услуг, если они есть
 if removed_services:
     last_row += 3  # Добавляем три пустые строки после легенды
     
-    # Добавляем заголовок для списка удаленных позиций
+    # Добавляем заголовок для списка удаленных позиций с ярким форматированием
     header = ws.cell(row=last_row, column=1, value="Список позиций, отсутствующих в прайсе 2025 года:")
-    header.font = Font(bold=True)
+    header.font = Font(bold=True, size=14, color="FF0000")  # Красный цвет, крупный шрифт
     header.border = thin_border
-    header.fill = white_fill
+    header.fill = light_gray_fill
     ws.merge_cells(start_row=last_row, start_column=1, end_row=last_row, end_column=4)  # Увеличиваем до 4 колонок
     
     last_row += 2  # Пропускаем строку после заголовка
     
-    # Добавляем заголовки колонок в новом порядке
-    headers = ['№ услуги', 'Артикул', 'Наименование услуги', 'Цена 2024']
+    # Добавляем заголовки колонок в новом порядке с ярким форматированием
+    headers = ['№ услуги', 'Артикул', 'Наименование услуги', 'Цена предыдущего года']
     for col, header_text in enumerate(headers, 1):
         cell = ws.cell(row=last_row, column=col, value=header_text)
         cell.font = Font(bold=True)
         cell.border = thin_border
-        cell.fill = light_gray_fill
+        cell.fill = yellow_fill  # Используем желтый цвет для лучшей видимости
         cell.alignment = Alignment(horizontal='center', vertical='center')
-    
+        
     # Добавляем данные в новом порядке
     for service_num, article, price, service in removed_services:
         last_row += 1
@@ -469,32 +552,95 @@ if removed_services:
     ws.column_dimensions['C'].width = 65  # Для наименования услуги
     ws.column_dimensions['D'].width = 15  # Для цены
 
+# Добавляем список новых позиций (которые есть в новом прайсе, но отсутствуют в старом)
+# Подготавливаем список новых позиций
+new_services = []
+if len(new_in_new) > 0:
+    for article in sorted(new_in_new):
+        # Проверяем, что артикул не пустой и существует в новом прайсе
+        if article and article.strip() and (df_new['Артикул'].astype(str) == article).any():
+            try:
+                service_num = df_new[df_new['Артикул'].astype(str) == article]['№ услуги'].iloc[0]
+                service = df_new[df_new['Артикул'].astype(str) == article]['Наименование услуги'].iloc[0]
+                price = df_new[df_new['Артикул'].astype(str) == article][price_column_new].iloc[0]
+                # Добавляем только если имеем все данные
+                if pd.notna(service_num) and pd.notna(service) and pd.notna(price):
+                    new_services.append((service_num, article, price, service))
+            except (IndexError, KeyError) as e:
+                print(f"Ошибка при обработке нового артикула {article}: {e}")
+    
+    # Сортируем список по номеру услуги
+    # Преобразуем номер услуги в число для корректной сортировки
+    new_services.sort(key=lambda x: float(str(x[0]).replace(',', '.')) if str(x[0]).replace(',', '.').replace('.', '').isdigit() else float('inf'))
+
+# Если есть новые позиции, добавляем их в результат
+if new_services:
+    last_row += 3  # Добавляем три пустые строки перед новым разделом
+    
+    # Добавляем заголовок для списка новых позиций с ярким форматированием
+    header = ws.cell(row=last_row, column=1, value="СПИСОК НОВЫХ ПОЗИЦИЙ, ПОЯВИВШИХСЯ В НОВОМ ПРАЙСЕ:")
+    header.font = Font(bold=True, size=14, color="008000")  # Зеленый цвет, крупный шрифт
+    header.border = thin_border
+    header.fill = light_gray_fill
+    ws.merge_cells(start_row=last_row, start_column=1, end_row=last_row, end_column=4)  # Увеличиваем до 4 колонок
+    
+    last_row += 2  # Пропускаем строку после заголовка
+    
+    # Добавляем заголовки колонок в новом порядке с ярким форматированием
+    headers = ['№ услуги', 'Артикул', 'Наименование услуги', 'Цена нового прайса']
+    for col, header_text in enumerate(headers, 1):
+        cell = ws.cell(row=last_row, column=col, value=header_text)
+        cell.font = Font(bold=True)
+        cell.border = thin_border
+        cell.fill = olive_fill  # Используем оливковый цвет для лучшей видимости
+        cell.alignment = Alignment(horizontal='center', vertical='center')
+        
+    # Добавляем данные в новом порядке
+    for service_num, article, price, service in new_services:
+        last_row += 1
+        # № услуги
+        ws.cell(row=last_row, column=1, value=service_num).border = thin_border
+        # Артикул
+        ws.cell(row=last_row, column=2, value=article).border = thin_border
+        # Наименование услуги
+        service_cell = ws.cell(row=last_row, column=3, value=service)
+        service_cell.border = thin_border
+        service_cell.alignment = Alignment(horizontal='left', vertical='center')
+        # Цена
+        price_cell = ws.cell(row=last_row, column=4, value=price)
+        price_cell.border = thin_border
+        price_cell.number_format = '0.00'  # Формат с двумя десятичными знаками
+    
+    # Сохраняем те же настройки ширины колонок, что и для удаленных позиций
+
 # Вычисляем общую разницу цен (только для позиций, которые есть в обоих прайсах)
-total_2024 = 0
-total_2025 = 0
+total_old = 0
+total_new = 0
 
 # Используем только те позиции, которые есть в обоих прайсах (исключаем строки с NaN в ценах)
-df_common = df_2025[
-    (df_2025['Стоимость услуг 2024'].notna()) & 
-    (df_2025[price_column_2025].notna()) &
-    (df_2025['Стоимость услуг 2024'] > 0) &
-    (df_2025[price_column_2025] > 0)
+df_common = df_new[
+    (df_new['Стоимость услуг предыдущий год'].notna()) & 
+    (df_new[price_column_new].notna()) &
+    (df_new['Стоимость услуг предыдущий год'] > 0) &
+    (df_new[price_column_new] > 0)
 ]
 
-# Считаем общие суммы
-total_2024 = df_common['Стоимость услуг 2024'].sum()
-total_2025 = df_common[price_column_2025].sum()
+# Считаем общие суммы для позиций, которые есть в обоих прайсах
+total_old_common = df_common['Стоимость услуг предыдущий год'].sum()
+total_new_common = df_common[price_column_new].sum()
+
+# Вычисляем процент изменения для общих позиций
+total_change_percent = ((total_new_common - total_old_common) / total_old_common * 100) if total_old_common > 0 else 0
 
 # Выводим информацию о количестве позиций для проверки
-print(f"\nКоличество позиций для расчета общего изменения: {len(df_common)}")
-
-# Вычисляем процент изменения
-total_change_percent = ((total_2025 - total_2024) / total_2024 * 100) if total_2024 > 0 else 0
+print(f"\nКоличество позиций для расчета изменения по общим позициям: {len(df_common)}")
+print(f"Количество позиций в старом прайсе с ценами: {len(df_old[price_column_old].dropna())}")
+print(f"Количество позиций в новом прайсе с ценами: {len(df_new[price_column_new].dropna())}")
 
 # Добавляем информацию об общем изменении цен в конец документа
 last_row += 3  # Добавляем три пустые строки перед итогами
 
-header = ws.cell(row=last_row, column=1, value="Общее изменение цен (без учета исключенных позиций):")
+header = ws.cell(row=last_row, column=1, value="Общее изменение цен (только по общим позициям):")
 header.font = Font(bold=True)
 header.border = thin_border
 header.fill = white_fill
@@ -515,16 +661,26 @@ elif total_change_percent != 0:
 else:
     change_value.fill = white_fill
 
-# Добавляем дополнительную информацию
-ws.cell(row=last_row + 1, column=1, value=f"Общая сумма цен 2024: {total_2024:,.2f} руб.").border = thin_border
-ws.cell(row=last_row + 2, column=1, value=f"Общая сумма цен 2025: {total_2025:,.2f} руб.").border = thin_border
+# Добавляем информацию об общих позициях
+ws.cell(row=last_row + 1, column=1, value=f"Сумма цен предыдущего года (только общие позиции): {total_old_common:,.2f} руб.").border = thin_border
+ws.cell(row=last_row + 2, column=1, value=f"Сумма цен следующего года (только общие позиции): {total_new_common:,.2f} руб.").border = thin_border
 
 # Сохраняем файл с форматированием
 wb.save(output_file)
 
 # Выводим статистику в консоль
-print(f"\nОбщее изменение цен (без учета исключенных позиций): {'+' if total_change_percent > 0 else ''}{total_change_percent:.1f}%")
-print(f"Общая сумма цен 2024: {total_2024:,.2f} руб.")
-print(f"Общая сумма цен 2025: {total_2025:,.2f} руб.")
+print(f"\nОбщее изменение цен (только по общим позициям): {'+' if total_change_percent > 0 else ''}{total_change_percent:.1f}%")
+print(f"Сумма цен предыдущего года (только общие позиции): {total_old_common:,.2f} руб.")
+print(f"Сумма цен следующего года (только общие позиции): {total_new_common:,.2f} руб.")
+
+# Дополнительная статистика по новым и удаленным позициям
+print(f"\nСтатистика по изменениям в прайсе:")
+print(f"Количество удаленных позиций: {len(removed_services)}")
+print(f"Количество новых позиций: {len(new_services)}")
+
+# Если есть новые позиции, выводим их общую стоимость
+if new_services:
+    total_new_services_cost = sum(price for _, _, price, _ in new_services)
+    print(f"Общая стоимость новых позиций: {total_new_services_cost:,.2f} руб.")
 
 print(f"\nАнализ завершен. Результат сохранен в файл '{output_file}'") 

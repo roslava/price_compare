@@ -6,10 +6,13 @@ WORKDIR /app
 RUN pip install pandas openpyxl xlrd>=2.0.1
 
 # Создаем директории
-RUN mkdir -p input output
+RUN mkdir -p input/old input/new result
 
 # Копирование файлов
 COPY compare_prices.py .
 
-# Запуск скрипта
-CMD ["python", "compare_prices.py"] 
+# Скрипт для обработки файлов перед запуском основного скрипта
+COPY entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
+
+ENTRYPOINT ["/app/entrypoint.sh"] 
